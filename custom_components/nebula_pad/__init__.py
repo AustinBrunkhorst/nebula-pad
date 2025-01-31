@@ -7,6 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
 
 from .const import DOMAIN, CONF_HOST, CONF_WS_PORT
+from .coordinator import NebulaPadCoordinator
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.CAMERA, Platform.NUMBER]
 _LOGGER = logging.getLogger(__name__)

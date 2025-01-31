@@ -14,7 +14,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.const import UnitOfTemperature
 
 from .const import DOMAIN, CONF_HOST, CONF_WS_PORT
-from .sensor import WebSocketCoordinator
+from .coordinator import NebulaPadCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -23,6 +23,7 @@ from homeassistant.const import UnitOfTemperature
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, CONF_HOST, CONF_WS_PORT
+from .coordinator import NebulaPadCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
