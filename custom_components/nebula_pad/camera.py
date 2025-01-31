@@ -10,7 +10,9 @@ from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_aiohttp_proxy_web
+from homeassistant.core import HomeAssistant
+from aiohttp import web
 
 from .const import DOMAIN, CONF_HOST, CONF_CAMERA_PORT
 
@@ -101,7 +103,12 @@ class NebulaPadCamera(Camera):
         """Return the camera model."""
         return "Nebula Pad"
         
-    @property
-    def frontend_stream_type(self) -> str | None:
-        """Return the type of stream supported by the camera for use in the frontend."""
-        return "hls"  # Use HLS streaming in frontend
+    async def handle_async_mjpeg_stream(self, request: web.Request) -> web.StreamResponse:
+        """Return an MJPEG stream response from the camera."""
+        # Proxy stream from camera to Home Assistant
+        return await async_aiohttp_proxy_web(
+            self.hass,
+            request,
+            self._mjpeg_url,
+            websession=self._session
+        )
