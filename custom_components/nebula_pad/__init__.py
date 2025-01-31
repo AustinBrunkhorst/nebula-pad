@@ -6,7 +6,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.const import Platform
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_HOST, CONF_WS_PORT
 from .coordinator import NebulaPadCoordinator
 
 PLATFORMS: list[Platform] = [
