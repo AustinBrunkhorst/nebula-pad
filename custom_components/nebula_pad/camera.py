@@ -1,24 +1,27 @@
 """Camera platform for Creality Nebula Pad integration."""
 from __future__ import annotations
 
-import logging
 import asyncio
+import logging
 from typing import Any
-import aiohttp
+from contextlib import suppress
 
-from homeassistant.components.camera import Camera, CameraEntityFeature
+import aiohttp
+from aiohttp import web
+from yarl import URL
+
+from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_aiohttp_proxy_web
-from homeassistant.core import HomeAssistant
-from aiohttp import web
 
 from .const import DOMAIN, CONF_HOST, CONF_CAMERA_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
-DEFAULT_RESOLUTION = (1920, 1080)  # Common resolution for printer cameras
+TIMEOUT = 10
+BUFFER_SIZE = 102400
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -41,74 +44,42 @@ class NebulaPadCamera(Camera):
         self.hass = hass
         self._attr_unique_id = f"nebula_pad_camera_{host}_{camera_port}"
         self._attr_name = "Nebula Pad Camera"
-        self._attr_frame_interval = 0.1
+        self._host = host
+        self._port = camera_port
+        
+        # URLs for camera endpoints
         self._mjpeg_url = f"http://{host}:{camera_port}/?action=stream"
-        self._still_image_url = f"http://{host}:{camera_port}/?action=snapshot"
-        self._session = async_get_clientsession(hass)
-        self._width = DEFAULT_RESOLUTION[0]
-        self._height = DEFAULT_RESOLUTION[1]
+        self._still_url = f"http://{host}:{camera_port}/?action=snapshot"
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return a still image from the camera."""
+        """Return a still image response from the camera."""
+        websession = async_get_clientsession(self.hass)
+        
         try:
-            async with self._session.get(self._still_image_url) as resp:
-                if resp.status != 200:
-                    _LOGGER.error(
-                        "Error getting camera image: %s - %s",
-                        resp.status,
-                        self._still_image_url,
-                    )
-                    return None
-                
-                image = await resp.read()
-                return image
-                
-        except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-            _LOGGER.error("Error getting camera image: %s", err)
+            async with asyncio.timeout(TIMEOUT):
+                async with websession.get(self._still_url) as response:
+                    return await response.read()
+
+        except TimeoutError:
+            _LOGGER.error("Timeout getting camera image from %s", self.name)
             return None
 
-    @property
-    def supported_features(self) -> int:
-        """Return supported features."""
-        return CameraEntityFeature.STREAM
+        except aiohttp.ClientError as err:
+            _LOGGER.error("Error getting camera image from %s: %s", self.name, err)
+            return None
 
-    @property
-    def frame_interval(self) -> float:
-        """Return the interval between frames of the MJPEG stream."""
-        return self._attr_frame_interval
-
-    async def stream_source(self) -> str | None:
+    async def stream_source(self) -> str:
         """Return the source of the stream."""
         return self._mjpeg_url
-        
-    @property
-    def is_streaming(self) -> bool:
-        """Return true if the device is streaming."""
-        return True
-        
-    @property
-    def motion_detection_enabled(self) -> bool:
-        """Return the camera motion detection status."""
-        return False
-        
-    @property
-    def brand(self) -> str:
-        """Return the camera brand."""
-        return "Creality"
-        
-    @property
-    def model(self) -> str:
-        """Return the camera model."""
-        return "Nebula Pad"
-        
+
     async def handle_async_mjpeg_stream(self, request: web.Request) -> web.StreamResponse:
-        """Return an MJPEG stream response from the camera."""
-        # Proxy stream from camera to Home Assistant
-        return await async_aiohttp_proxy_web(
-            self.hass,
-            request,
+        """Generate an HTTP MJPEG stream from the camera."""
+        websession = async_get_clientsession(self.hass)
+        stream_coro = websession.get(
             self._mjpeg_url,
-            websession=self._session
+            timeout=aiohttp.ClientTimeout(total=TIMEOUT)
         )
+
+        return await async_aiohttp_proxy_web(self.hass, request, stream_coro)
