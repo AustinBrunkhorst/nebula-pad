@@ -5,7 +5,7 @@ import logging
 import asyncio
 from typing import Any
 
-from homeassistant.components.camera import Camera
+from homeassistant.components.camera import Camera, CameraEntityFeature
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -52,7 +52,7 @@ class NebulaPadCamera(Camera):
     @property
     def supported_features(self) -> int:
         """Return supported features."""
-        return 0
+        return CameraEntityFeature.STREAM
 
     async def stream_source(self) -> str | None:
         """Return the source of the stream."""
