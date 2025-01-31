@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import logging
-import json
 from typing import Any
 
 from homeassistant.components.number import NumberEntity, NumberMode
@@ -76,14 +75,13 @@ class NebulaPadTargetNozzleTemp(NebulaPadBaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new target temperature."""
-        if self.coordinator.websocket and not self.coordinator.websocket.closed:
-            command = {
-                "method": "set",
-                "params": {
-                    "nozzleTempControl": int(value)
-                }
+        command = {
+            "method": "set",
+            "params": {
+                "nozzleTempControl": int(value)
             }
-            await self.coordinator.websocket.send(json.dumps(command))
+        }
+        await self.coordinator.send_message(command)
 
     async def process_update(self, data: dict) -> None:
         """Process update from websocket."""
@@ -105,17 +103,16 @@ class NebulaPadTargetBedTemp(NebulaPadBaseNumber):
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new target temperature."""
-        if self.coordinator.websocket and not self.coordinator.websocket.closed:
-            command = {
-                "method": "set",
-                "params": {
-                    "bedTempControl": {
-                        "num": 0,
-                        "val": int(value)
-                    }
+        command = {
+            "method": "set",
+            "params": {
+                "bedTempControl": {
+                    "num": 0,
+                    "val": int(value)
                 }
             }
-            await self.coordinator.websocket.send(json.dumps(command))
+        }
+        await self.coordinator.send_message(command)
 
     async def process_update(self, data: dict) -> None:
         """Process update from websocket."""

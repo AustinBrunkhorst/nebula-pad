@@ -8,8 +8,7 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 from contextlib import suppress
 
-import websockets
-from websockets.exceptions import ConnectionClosed, WebSocketException
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -22,27 +21,17 @@ class NebulaPadCoordinator:
         port: int, 
         reconnect_interval: int = 5
     ) -> None:
-        """Initialize the WebSocket coordinator.
-        
-        Args:
-            host: WebSocket server host
-            port: WebSocket server port
-            reconnect_interval: Seconds to wait between reconnection attempts
-        """
+        """Initialize the WebSocket coordinator."""
         self._host = host
         self._port = port
         self._reconnect_interval = reconnect_interval
         self._ws = None
+        self._session = None
         self._shutdown = False
         self._connection_task = None
         self._heartbeat_task = None
         self._connect_lock = asyncio.Lock()
         self._message_handlers: list[Callable[[dict], None]] = []
-
-    @property
-    def websocket(self):
-        """Return the current websocket connection."""
-        return self._ws
 
     def add_message_handler(self, handler: Callable[[dict], None]) -> None:
         """Add a message handler."""
@@ -53,9 +42,24 @@ class NebulaPadCoordinator:
         with suppress(ValueError):
             self._message_handlers.remove(handler)
 
+    async def send_message(self, message: dict) -> None:
+        """Send a message through the WebSocket connection.
+        
+        Handles connection state and message serialization.
+        """
+        if self._ws is None:
+            _LOGGER.error("Cannot send message - no WebSocket connection")
+            return
+
+        try:
+            await self._ws.send_json(message)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.error("Failed to send message: %s", err)
+
     async def start(self) -> None:
         """Start the WebSocket coordinator."""
         self._shutdown = False
+        self._session = aiohttp.ClientSession()
         self._connection_task = asyncio.create_task(self._maintain_connection())
         _LOGGER.info("WebSocket coordinator started for %s:%s", self._host, self._port)
 
@@ -73,9 +77,13 @@ class NebulaPadCoordinator:
             with suppress(asyncio.CancelledError):
                 await self._heartbeat_task
         
-        if self._ws and not self._ws.closed:
+        if self._ws:
             await self._ws.close()
             self._ws = None
+            
+        if self._session:
+            await self._session.close()
+            self._session = None
         
         _LOGGER.info("WebSocket coordinator stopped for %s:%s", self._host, self._port)
 
@@ -101,7 +109,7 @@ class NebulaPadCoordinator:
             uri = f"ws://{self._host}:{self._port}"
             _LOGGER.debug("Attempting to connect to %s", uri)
             
-            async with websockets.connect(uri, ping_interval=None) as websocket:
+            async with self._session.ws_connect(uri) as websocket:
                 self._ws = websocket
                 _LOGGER.info(
                     "Connected to Nebula Pad WebSocket server at %s:%s",
@@ -119,56 +127,43 @@ class NebulaPadCoordinator:
                         with suppress(asyncio.CancelledError):
                             await self._heartbeat_task
                         self._heartbeat_task = None
+                    self._ws = None
 
     async def _listen_for_messages(self) -> None:
         """Listen for and process WebSocket messages."""
         while not self._shutdown:
             try:
-                message = await self._ws.recv()
+                msg = await self._ws.receive()
                 
-                if message == "ok":
-                    _LOGGER.debug("Received heartbeat response")
-                    continue
-                
-                _LOGGER.debug("Received message: %s", message)
-                
-                try:
-                    data = json.loads(message)
-                    _LOGGER.debug("Parsed message data: %s", data)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    if msg.data == "ok":
+                        _LOGGER.debug("Received heartbeat response")
+                        continue
                     
-                    # Notify all handlers
-                    for handler in self._message_handlers:
-                        try:
-                            await handler(data)
-                        except Exception as err:  # pylint: disable=broad-except
-                            _LOGGER.error("Error in message handler: %s", err)
-                            
-                except json.JSONDecodeError:
-                    _LOGGER.error(
-                        "Invalid JSON message received from %s:%s - %s",
-                        self._host,
-                        self._port,
-                        message
-                    )
+                    _LOGGER.debug("Received message: %s", msg.data)
                     
-            except ConnectionClosed as err:
-                if not self._shutdown:
-                    _LOGGER.info(
-                        "WebSocket connection closed for %s:%s - %s",
-                        self._host,
-                        self._port,
-                        err
-                    )
-                break
-            except WebSocketException as err:
-                if not self._shutdown:
-                    _LOGGER.error(
-                        "WebSocket error for %s:%s - %s",
-                        self._host,
-                        self._port,
-                        err
-                    )
-                break
+                    try:
+                        data = json.loads(msg.data)
+                        _LOGGER.debug("Parsed message data: %s", data)
+                        
+                        # Notify all handlers
+                        for handler in self._message_handlers:
+                            try:
+                                await handler(data)
+                            except Exception as err:  # pylint: disable=broad-except
+                                _LOGGER.error("Error in message handler: %s", err)
+                                
+                    except json.JSONDecodeError:
+                        _LOGGER.error(
+                            "Invalid JSON message received from %s:%s - %s",
+                            self._host,
+                            self._port,
+                            msg.data
+                        )
+                        
+                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                    break
+                    
             except Exception as err:  # pylint: disable=broad-except
                 if not self._shutdown:
                     _LOGGER.error(
@@ -177,27 +172,19 @@ class NebulaPadCoordinator:
                         self._port,
                         err
                     )
+                break
 
     async def _send_heartbeats(self) -> None:
         """Send periodic heartbeat messages."""
-        while not self._shutdown and self._ws and not self._ws.closed:
+        while not self._shutdown and self._ws:
             try:
                 heartbeat = {
                     "ModeCode": "heart_beat",
                     "msg": datetime.now(timezone.utc).isoformat()
                 }
-                await self._ws.send(json.dumps(heartbeat))
+                await self.send_message(heartbeat)
                 _LOGGER.debug("Sent heartbeat: %s", heartbeat)
                 await asyncio.sleep(6)
-            except ConnectionClosed as err:
-                if not self._shutdown:
-                    _LOGGER.info(
-                        "Connection closed while sending heartbeat to %s:%s - %s",
-                        self._host,
-                        self._port,
-                        err
-                    )
-                break
             except Exception as err:  # pylint: disable=broad-except
                 if not self._shutdown:
                     _LOGGER.error(
