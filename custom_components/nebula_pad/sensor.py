@@ -19,7 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.const import UnitOfTemperature
 
-from .const import DOMAIN, CONF_HOST, CONF_PORT
+from .const import DOMAIN, CONF_HOST, CONF_WS_PORT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -30,14 +30,14 @@ async def async_setup_entry(
 ) -> None:
     """Set up Creality Nebula Pad Sensor from a config entry."""
     host = entry.data[CONF_HOST]
-    port = entry.data[CONF_PORT]
+    ws_port = entry.data[CONF_WS_PORT]
     
     entities = [
-        NebulaPadNozzleTempSensor(host, port),
-        NebulaPadBedTempSensor(host, port)
+        NebulaPadNozzleTempSensor(host, ws_port),
+        NebulaPadBedTempSensor(host, ws_port)
     ]
     
-    coordinator = NebulaPadCoordinator(host, port, entities)
+    coordinator = NebulaPadCoordinator(host, ws_port, entities)
     for entity in entities:
         entity.set_coordinator(coordinator)
     

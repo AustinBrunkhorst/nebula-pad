@@ -12,7 +12,8 @@
             "user": {
                 "data": {
                     "host": "Host",
-                    "port": "Port"
+                    "websocket_port": "WebSocket Port",
+                    "camera_port": "Camera Port"
                 },
                 "description": "Set up your Creality Nebula Pad.",
                 "title": "Creality Nebula Pad"

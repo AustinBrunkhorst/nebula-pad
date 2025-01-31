@@ -2,4 +2,5 @@
 DOMAIN = "nebula_pad"
 
 CONF_HOST = "host"
-CONF_PORT = "port"
+CONF_WS_PORT = "websocket_port"
+CONF_CAMERA_PORT = "camera_port"
