@@ -96,6 +96,8 @@ class WebSocketCoordinator:
                 return
                 
             uri = f"ws://{self._host}:{self._port}"
+            _LOGGER.debug("Connecting to WebSocket at %s", uri)
+            
             async with websockets.connect(uri) as websocket:
                 self._ws = websocket
                 _LOGGER.info("Connected to Nebula Pad WebSocket server")
@@ -118,17 +120,21 @@ class WebSocketCoordinator:
         while not self._shutdown:
             try:
                 message = await self._ws.recv()
+                _LOGGER.debug("Received message: %s", message)
                 
-                # Skip processing heartbeat responses
+                # Handle plaintext "ok" responses from heartbeat
                 if message == "ok":
+                    _LOGGER.debug("Received heartbeat acknowledgment")
                     continue
                 
                 # Parse and handle JSON messages
                 try:
                     data = json.loads(message)
-                    await self._message_handler(data)
+                    _LOGGER.debug("Parsed message data: %s", data)
+                    if "nozzleTemp" in data or "bedTemp0" in data:
+                        await self._message_handler(data)
                 except json.JSONDecodeError:
-                    _LOGGER.error("Invalid message received: %s", message)
+                    _LOGGER.error("Received invalid message: %s", message)
                     
             except ConnectionClosed:
                 _LOGGER.info("WebSocket connection closed")
@@ -136,124 +142,3 @@ class WebSocketCoordinator:
             except WebSocketException as err:
                 _LOGGER.error("WebSocket error: %s", err)
                 break
-            except Exception as err:  # pylint: disable=broad-except
-                _LOGGER.error("Error processing message: %s", err)
-
-    async def _send_heartbeats(self) -> None:
-        """Send periodic heartbeat messages."""
-        while not self._shutdown and self._ws:
-            try:
-                heartbeat = {
-                    "ModeCode": "heart_beat",
-                    "msg": datetime.now(timezone.utc).isoformat()
-                }
-                await self._ws.send(json.dumps(heartbeat))
-                await asyncio.sleep(6)
-            except ConnectionClosed:
-                break
-            except Exception as err:  # pylint: disable=broad-except
-                _LOGGER.error("Error sending heartbeat: %s", err)
-                break
-
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddEntitiesCallback,
-) -> None:
-    """Set up Creality Nebula Pad Sensor from a config entry."""
-    host = entry.data[CONF_HOST]
-    ws_port = entry.data[CONF_WS_PORT]
-    
-    entities = [
-        NebulaPadNozzleTempSensor(host, ws_port),
-        NebulaPadBedTempSensor(host, ws_port)
-    ]
-    
-    # Create coordinator with message handler
-    async def handle_temperature_update(data: dict) -> None:
-        """Process temperature updates for all sensors."""
-        if not any(key in data for key in ["nozzleTemp", "bedTemp0"]):
-            return
-            
-        for entity in entities:
-            await entity.process_update(data)
-    
-    coordinator = WebSocketCoordinator(
-        host=host,
-        port=ws_port,
-        message_handler=handle_temperature_update
-    )
-    
-    # Set coordinator for all entities
-    for entity in entities:
-        entity.set_coordinator(coordinator)
-    
-    async_add_entities(entities, True)
-
-class NebulaPadBaseSensor(SensorEntity):
-    """Base class for Nebula Pad sensors."""
-
-    _attr_device_class = SensorDeviceClass.TEMPERATURE
-    _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
-    _attr_should_poll = False
-
-    def __init__(self, host: str, port: int) -> None:
-        """Initialize the sensor."""
-        self._host = host
-        self._port = port
-        self._coordinator = None
-
-    def set_coordinator(self, coordinator: WebSocketCoordinator) -> None:
-        """Set the coordinator for this sensor."""
-        self._coordinator = coordinator
-
-    async def async_added_to_hass(self) -> None:
-        """Handle entity which will be added."""
-        if self._coordinator:
-            await self._coordinator.start()
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Handle entity being removed from Home Assistant."""
-        if self._coordinator:
-            await self._coordinator.stop()
-
-    async def process_update(self, data: dict) -> None:
-        """Process update from websocket."""
-        raise NotImplementedError
-
-class NebulaPadNozzleTempSensor(NebulaPadBaseSensor):
-    """Representation of a Nebula Pad Nozzle Temperature Sensor."""
-
-    def __init__(self, host: str, port: int) -> None:
-        """Initialize the sensor."""
-        super().__init__(host, port)
-        self._attr_unique_id = f"nebula_pad_nozzle_{host}_{port}"
-        self._attr_name = f"Nebula Pad Nozzle Temperature"
-
-    async def process_update(self, data: dict) -> None:
-        """Process update from websocket."""
-        if "nozzleTemp" in data:
-            try:
-                self._attr_native_value = float(data["nozzleTemp"])
-                self.async_write_ha_state()
-            except ValueError:
-                _LOGGER.error("Invalid nozzle temperature value")
-
-class NebulaPadBedTempSensor(NebulaPadBaseSensor):
-    """Representation of a Nebula Pad Bed Temperature Sensor."""
-
-    def __init__(self, host: str, port: int) -> None:
-        """Initialize the sensor."""
-        super().__init__(host, port)
-        self._attr_unique_id = f"nebula_pad_bed_{host}_{port}"
-        self._attr_name = f"Nebula Pad Bed Temperature"
-
-    async def process_update(self, data: dict) -> None:
-        """Process update from websocket."""
-        if "bedTemp0" in data:
-            try:
-                self._attr_native_value = float(data["bedTemp0"])
-                self.async_write_ha_state()
-            except ValueError:
-                _LOGGER.error("Invalid bed temperature value")
