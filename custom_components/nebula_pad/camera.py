@@ -3,20 +3,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
 from contextlib import suppress
 
 import aiohttp
 from aiohttp import web
-from yarl import URL
 
-from homeassistant.components.camera import Camera
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession, async_aiohttp_proxy_web
 
 from .const import DOMAIN, CONF_HOST, CONF_CAMERA_PORT
+from .entity import NebulaPadBaseCamera
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,20 +27,20 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up Creality Nebula Pad Camera from a config entry."""
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     host = entry.data[CONF_HOST]
     camera_port = entry.data[CONF_CAMERA_PORT]
     
-    async_add_entities([NebulaPadCamera(hass, host, camera_port)], True)
+    async_add_entities([NebulaPadCamera(coordinator, host, camera_port)], True)
 
-class NebulaPadCamera(Camera):
+class NebulaPadCamera(NebulaPadBaseCamera):
     """Representation of a Nebula Pad Camera."""
 
-    def __init__(self, hass: HomeAssistant, host: str, camera_port: int) -> None:
+    def __init__(self, coordinator: NebulaPadCoordinator, host: str, camera_port: int) -> None:
         """Initialize Nebula Pad Camera."""
-        super().__init__()
+        super().__init__(coordinator)
         
-        self.hass = hass
-        self._attr_unique_id = f"nebula_pad_camera_{host}_{camera_port}"
+        self._attr_unique_id = f"nebula_pad_{host}_camera"
         self._attr_name = "Nebula Pad Camera"
         self._host = host
         self._port = camera_port

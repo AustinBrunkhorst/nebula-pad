@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import NumberMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -12,6 +12,7 @@ from homeassistant.const import UnitOfTemperature
 
 from .const import DOMAIN
 from .coordinator import NebulaPadCoordinator
+from .entity import NebulaPadBaseNumber
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,8 +40,8 @@ async def async_setup_entry(
     coordinator.add_message_handler(handle_target_update)
     async_add_entities(entities, True)
 
-class NebulaPadBaseNumber(NumberEntity):
-    """Base class for Nebula Pad number entities."""
+class NebulaPadTempNumber(NebulaPadBaseNumber):
+    """Base class for Nebula Pad temperature number entities."""
 
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_mode = NumberMode.BOX
@@ -48,29 +49,13 @@ class NebulaPadBaseNumber(NumberEntity):
     _attr_native_max_value = 300
     _attr_native_step = 1
 
-    def __init__(self, coordinator: NebulaPadCoordinator) -> None:
-        """Initialize the number entity."""
-        self.coordinator = coordinator
-
-    async def async_added_to_hass(self) -> None:
-        """Handle entity which will be added."""
-        await super().async_added_to_hass()
-
-    async def async_will_remove_from_hass(self) -> None:
-        """Handle entity being removed from Home Assistant."""
-        await super().async_will_remove_from_hass()
-
-    async def process_update(self, data: dict) -> None:
-        """Process update from websocket."""
-        raise NotImplementedError
-
-class NebulaPadTargetNozzleTemp(NebulaPadBaseNumber):
+class NebulaPadTargetNozzleTemp(NebulaPadTempNumber):
     """Representation of a Nebula Pad Target Nozzle Temperature control."""
 
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_target_nozzle"
+        self._attr_unique_id = f"nebula_pad_{coordinator._host}_target_nozzle"
         self._attr_name = "Nebula Pad Target Nozzle Temperature"
 
     async def async_set_native_value(self, value: float) -> None:
@@ -92,13 +77,13 @@ class NebulaPadTargetNozzleTemp(NebulaPadBaseNumber):
             except ValueError:
                 _LOGGER.error("Invalid target nozzle temperature value")
 
-class NebulaPadTargetBedTemp(NebulaPadBaseNumber):
+class NebulaPadTargetBedTemp(NebulaPadTempNumber):
     """Representation of a Nebula Pad Target Bed Temperature control."""
 
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_target_bed"
+        self._attr_unique_id = f"nebula_pad_{coordinator._host}_target_bed"
         self._attr_name = "Nebula Pad Target Bed Temperature"
 
     async def async_set_native_value(self, value: float) -> None:

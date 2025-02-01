@@ -22,6 +22,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Creality Nebula Pad from a config entry."""
     # Initialize the coordinator
     coordinator = NebulaPadCoordinator(
+        hass=hass,
+        entry_id=entry.entry_id,
         host=entry.data[CONF_HOST],
         port=entry.data[CONF_WS_PORT],
     )
