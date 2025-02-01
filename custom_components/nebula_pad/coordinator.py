@@ -9,7 +9,7 @@ from typing import Any, Callable
 from contextlib import suppress
 
 import aiohttp
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
@@ -58,6 +58,57 @@ class NebulaPadCoordinator:
         """Set up the coordinator and wait for device info."""
         await self.start()
         await self._setup_complete.wait()
+
+    async def start(self) -> None:
+        """Start the WebSocket coordinator."""
+        self._shutdown = False
+        self._session = aiohttp.ClientSession()
+        self._connection_task = asyncio.create_task(self._maintain_connection())
+        _LOGGER.info("WebSocket coordinator started for %s:%s", self._host, self._port)
+
+    async def stop(self) -> None:
+        """Stop the WebSocket coordinator."""
+        self._shutdown = True
+        
+        if self._connection_task:
+            self._connection_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._connection_task
+        
+        if self._heartbeat_task:
+            self._heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await self._heartbeat_task
+        
+        if self._ws:
+            await self._ws.close()
+            self._ws = None
+            
+        if self._session:
+            await self._session.close()
+            self._session = None
+        
+        _LOGGER.info("WebSocket coordinator stopped for %s:%s", self._host, self._port)
+
+    def add_message_handler(self, handler: Callable[[dict], None]) -> None:
+        """Add a message handler."""
+        self._message_handlers.append(handler)
+
+    def remove_message_handler(self, handler: Callable[[dict], None]) -> None:
+        """Remove a message handler."""
+        with suppress(ValueError):
+            self._message_handlers.remove(handler)
+
+    async def send_message(self, message: dict) -> None:
+        """Send a message through the WebSocket connection."""
+        if self._ws is None:
+            _LOGGER.error("Cannot send message - no WebSocket connection")
+            return
+
+        try:
+            await self._ws.send_json(message)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.error("Failed to send message: %s", err)
 
     def _handle_device_info(self, data: dict) -> None:
         """Handle device info message and register device."""
@@ -132,7 +183,6 @@ class NebulaPadCoordinator:
                     
                     try:
                         data = json.loads(msg.data)
-                        _LOGGER.debug("Parsed message data: %s", data)
                         
                         # Handle device info
                         self._handle_device_info(data)
