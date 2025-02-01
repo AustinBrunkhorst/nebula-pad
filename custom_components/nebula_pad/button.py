@@ -24,7 +24,10 @@ async def async_setup_entry(
     
     entities = [
         AutoHomeXYButton(coordinator),
-        AutoHomeZButton(coordinator)
+        AutoHomeZButton(coordinator),
+        PausePrintButton(coordinator),
+        ResumePrintButton(coordinator),
+        StopPrintButton(coordinator),
     ]
     
     async_add_entities(entities, True)
@@ -63,6 +66,63 @@ class AutoHomeZButton(NebulaPadBaseButton):
             "method": "set",
             "params": {
                 "autohome": "Z"
+            }
+        }
+        await self.coordinator.send_message(command)
+
+class PausePrintButton(NebulaPadBaseButton):
+    """Button to pause the current print."""
+
+    def __init__(self, coordinator: NebulaPadCoordinator) -> None:
+        """Initialize the button entity."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator._host}_pause_print"
+        self._attr_name = "Pause Print"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        command = {
+            "method": "set",
+            "params": {
+                "pause": 1
+            }
+        }
+        await self.coordinator.send_message(command)
+
+class ResumePrintButton(NebulaPadBaseButton):
+    """Button to resume the paused print."""
+
+    def __init__(self, coordinator: NebulaPadCoordinator) -> None:
+        """Initialize the button entity."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator._host}_resume_print"
+        self._attr_name = "Resume Print"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        command = {
+            "method": "set",
+            "params": {
+                "pause": 0
+            }
+        }
+        await self.coordinator.send_message(command)
+
+class StopPrintButton(NebulaPadBaseButton):
+    """Button to stop the current print."""
+
+    def __init__(self, coordinator: NebulaPadCoordinator) -> None:
+        """Initialize the button entity."""
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator._host}_stop_print"
+        self._attr_name = "Stop Print"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        command = {
+            "method": "set",
+            "params": {
+                "stop": 1
             }
         }
         await self.coordinator.send_message(command)
