@@ -1,7 +1,7 @@
 {
     "domain": "nebula_pad",
     "name": "Creality Nebula Pad",
-    "version": "0.0.7",
+    "version": "0.0.8",
     "documentation": "https://github.com/AustinBrunkhorst/nebula-pad",
     "dependencies": [],
     "codeowners": ["@AustinBrunkhorst"],
