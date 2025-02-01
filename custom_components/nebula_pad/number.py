@@ -55,8 +55,8 @@ class NebulaPadTargetNozzleTemp(NebulaPadTempNumber):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_target_nozzle"
-        self._attr_name = "Nebula Pad Target Nozzle Temperature"
+        self._attr_unique_id = f"{coordinator._host}_target_nozzle"
+        self._attr_name = "Target Nozzle Temperature"
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new target temperature."""
@@ -83,8 +83,8 @@ class NebulaPadTargetBedTemp(NebulaPadTempNumber):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the number entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_target_bed"
-        self._attr_name = "Nebula Pad Target Bed Temperature"
+        self._attr_unique_id = f"{coordinator._host}_target_bed"
+        self._attr_name = "Target Bed Temperature"
 
     async def async_set_native_value(self, value: float) -> None:
         """Set new target temperature."""

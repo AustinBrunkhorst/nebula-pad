@@ -57,8 +57,8 @@ class NebulaPadNozzleTempSensor(NebulaPadTempSensor):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_nozzle"
-        self._attr_name = "Nebula Pad Nozzle Temperature"
+        self._attr_unique_id = f"{coordinator._host}_nozzle"
+        self._attr_name = "Nozzle Temperature"
 
     async def process_update(self, data: dict) -> None:
         """Process update from websocket."""
@@ -75,8 +75,8 @@ class NebulaPadBedTempSensor(NebulaPadTempSensor):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_bed"
-        self._attr_name = "Nebula Pad Bed Temperature"
+        self._attr_unique_id = f"{coordinator._host}_bed"
+        self._attr_name = "Bed Temperature"
 
     async def process_update(self, data: dict) -> None:
         """Process update from websocket."""

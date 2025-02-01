@@ -5,10 +5,6 @@ import logging
 from typing import Any
 
 import voluptuous as vol
-import websockets
-import json
-from datetime import datetime, timezone
-import aiohttp
 
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant
@@ -16,6 +12,7 @@ from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 
 from .const import DOMAIN, CONF_HOST, CONF_WS_PORT, CONF_CAMERA_PORT
+from .coordinator import NebulaPadCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -29,33 +26,27 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
-    try:
-        # Test WebSocket connection
-        ws_uri = f"ws://{data[CONF_HOST]}:{data[CONF_WS_PORT]}"
-        async with websockets.connect(ws_uri) as websocket:
-            heartbeat = {
-                "ModeCode": "heart_beat",
-                "msg": datetime.now(timezone.utc).isoformat()
-            }
-            await websocket.send(json.dumps(heartbeat))
-            await websocket.recv()
-        
-        # Test camera stream
-        camera_url = f"http://{data[CONF_HOST]}:{data[CONF_CAMERA_PORT]}/?action=stream"
-        async with aiohttp.ClientSession() as session:
-            async with session.get(camera_url) as response:
-                if response.status != 200:
-                    raise CannotConnect
-                
-                # Verify it's an MJPEG stream
-                content_type = response.headers.get('Content-Type', '')
-                if 'multipart/x-mixed-replace' not in content_type:
-                    raise CannotConnect
-            
-    except Exception as err:
-        raise CannotConnect from err
+    coordinator = NebulaPadCoordinator(
+        hass=hass,
+        entry_id="temp",  # Temporary entry_id for validation
+        host=data[CONF_HOST],
+        port=data[CONF_WS_PORT],
+    )
 
-    return {"title": f"Nebula Pad {data[CONF_HOST]}"}
+    try:
+        await coordinator.setup()
+        
+        # Get the hostname from device info
+        title = coordinator.hostname
+        
+        # Stop the coordinator since this was just for validation
+        await coordinator.stop()
+        
+        return {"title": title}
+        
+    except Exception as err:
+        await coordinator.stop()
+        raise CannotConnect from err
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Creality Nebula Pad."""

@@ -40,8 +40,8 @@ class NebulaPadCamera(NebulaPadBaseCamera):
         """Initialize Nebula Pad Camera."""
         super().__init__(coordinator)
         
-        self._attr_unique_id = f"nebula_pad_{host}_camera"
-        self._attr_name = "Nebula Pad Camera"
+        self._attr_unique_id = f"{host}_camera"
+        self._attr_name = "Camera"
         self._host = host
         self._port = camera_port
         

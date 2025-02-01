@@ -42,6 +42,7 @@ class NebulaPadCoordinator:
         self._connect_lock = asyncio.Lock()
         self._message_handlers: list[Callable[[dict], None]] = []
         self._device_info = None
+        self._hostname = None
         self._setup_complete = asyncio.Event()
 
     @property
@@ -50,69 +51,22 @@ class NebulaPadCoordinator:
         return self._device_info
 
     @property
+    def hostname(self) -> str | None:
+        """Return the device hostname."""
+        return self._hostname
+
+    @property
     def is_initialized(self) -> bool:
         """Return True if device info is available."""
         return self._device_info is not None
 
-    async def setup(self) -> None:
-        """Set up the coordinator and wait for device info."""
-        await self.start()
-        await self._setup_complete.wait()
-
-    async def start(self) -> None:
-        """Start the WebSocket coordinator."""
-        self._shutdown = False
-        self._session = aiohttp.ClientSession()
-        self._connection_task = asyncio.create_task(self._maintain_connection())
-        _LOGGER.info("WebSocket coordinator started for %s:%s", self._host, self._port)
-
-    async def stop(self) -> None:
-        """Stop the WebSocket coordinator."""
-        self._shutdown = True
-        
-        if self._connection_task:
-            self._connection_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._connection_task
-        
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._heartbeat_task
-        
-        if self._ws:
-            await self._ws.close()
-            self._ws = None
-            
-        if self._session:
-            await self._session.close()
-            self._session = None
-        
-        _LOGGER.info("WebSocket coordinator stopped for %s:%s", self._host, self._port)
-
-    def add_message_handler(self, handler: Callable[[dict], None]) -> None:
-        """Add a message handler."""
-        self._message_handlers.append(handler)
-
-    def remove_message_handler(self, handler: Callable[[dict], None]) -> None:
-        """Remove a message handler."""
-        with suppress(ValueError):
-            self._message_handlers.remove(handler)
-
-    async def send_message(self, message: dict) -> None:
-        """Send a message through the WebSocket connection."""
-        if self._ws is None:
-            _LOGGER.error("Cannot send message - no WebSocket connection")
-            return
-
-        try:
-            await self._ws.send_json(message)
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error("Failed to send message: %s", err)
-
     def _handle_device_info(self, data: dict) -> None:
         """Handle device info message and register device."""
         if all(key in data for key in ["hostname", "model", "modelVersion"]):
+            self._hostname = data["hostname"]
+            if not self._hostname or self._hostname.strip() == "":
+                self._hostname = f"Nebula Pad {self._host}"
+                
             self._device_info = get_device_info(data, self._host)
             
             # Register device
@@ -125,113 +79,3 @@ class NebulaPadCoordinator:
             
             self._setup_complete.set()
             _LOGGER.info("Device info received: %s", self._device_info)
-
-    async def _maintain_connection(self) -> None:
-        """Maintain the WebSocket connection and handle reconnection."""
-        while not self._shutdown:
-            try:
-                await self._connect_and_listen()
-            except Exception as err:  # pylint: disable=broad-except
-                if not self._shutdown:
-                    _LOGGER.error(
-                        "WebSocket error for %s:%s - %s", 
-                        self._host, self._port, err
-                    )
-                    await asyncio.sleep(self._reconnect_interval)
-
-    async def _connect_and_listen(self) -> None:
-        """Establish WebSocket connection and handle messages."""
-        async with self._connect_lock:
-            if self._shutdown:
-                return
-                
-            uri = f"ws://{self._host}:{self._port}"
-            _LOGGER.debug("Attempting to connect to %s", uri)
-            
-            async with self._session.ws_connect(uri) as websocket:
-                self._ws = websocket
-                _LOGGER.info(
-                    "Connected to Nebula Pad WebSocket server at %s:%s",
-                    self._host,
-                    self._port
-                )
-                
-                self._heartbeat_task = asyncio.create_task(self._send_heartbeats())
-                
-                try:
-                    await self._listen_for_messages()
-                finally:
-                    if self._heartbeat_task:
-                        self._heartbeat_task.cancel()
-                        with suppress(asyncio.CancelledError):
-                            await self._heartbeat_task
-                        self._heartbeat_task = None
-                    self._ws = None
-
-    async def _listen_for_messages(self) -> None:
-        """Listen for and process WebSocket messages."""
-        while not self._shutdown:
-            try:
-                msg = await self._ws.receive()
-                
-                if msg.type == aiohttp.WSMsgType.TEXT:
-                    if msg.data == "ok":
-                        _LOGGER.debug("Received heartbeat response")
-                        continue
-                    
-                    _LOGGER.debug("Received message: %s", msg.data)
-                    
-                    try:
-                        data = json.loads(msg.data)
-                        
-                        # Handle device info
-                        self._handle_device_info(data)
-                        
-                        # Notify all handlers
-                        for handler in self._message_handlers:
-                            try:
-                                await handler(data)
-                            except Exception as err:  # pylint: disable=broad-except
-                                _LOGGER.error("Error in message handler: %s", err)
-                                
-                    except json.JSONDecodeError:
-                        _LOGGER.error(
-                            "Invalid JSON message received from %s:%s - %s",
-                            self._host,
-                            self._port,
-                            msg.data
-                        )
-                        
-                elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
-                    break
-                    
-            except Exception as err:  # pylint: disable=broad-except
-                if not self._shutdown:
-                    _LOGGER.error(
-                        "Error processing message from %s:%s - %s",
-                        self._host,
-                        self._port,
-                        err
-                    )
-                break
-
-    async def _send_heartbeats(self) -> None:
-        """Send periodic heartbeat messages."""
-        while not self._shutdown and self._ws:
-            try:
-                heartbeat = {
-                    "ModeCode": "heart_beat",
-                    "msg": datetime.now(timezone.utc).isoformat()
-                }
-                await self.send_message(heartbeat)
-                _LOGGER.debug("Sent heartbeat: %s", heartbeat)
-                await asyncio.sleep(6)
-            except Exception as err:  # pylint: disable=broad-except
-                if not self._shutdown:
-                    _LOGGER.error(
-                        "Error sending heartbeat to %s:%s - %s",
-                        self._host,
-                        self._port,
-                        err
-                    )
-                break

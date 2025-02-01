@@ -12,7 +12,9 @@ class NebulaPadBaseMixin(Entity):
 
     def __init__(self, coordinator) -> None:
         """Initialize the entity."""
+        super().__init__()
         self.coordinator = coordinator
+        self.hass = coordinator.hass
         self._attr_has_entity_name = True
 
     @property
@@ -32,27 +34,9 @@ class NebulaPadBaseMixin(Entity):
         return self.coordinator.is_initialized
 
     @property
-    def entity_id(self) -> str:
-        """Return the entity ID."""
-        if not hasattr(self, '_attr_unique_id'):
-            return None
-            
-        unique_parts = self._attr_unique_id.split('_')
-        host_part = '_'.join(unique_parts[2:-1]).replace('.', '_')
-        name_part = unique_parts[-1]
-        
-        if isinstance(self, SensorEntity):
-            platform = "sensor"
-        elif isinstance(self, ButtonEntity):
-            platform = "button"
-        elif isinstance(self, NumberEntity):
-            platform = "number"
-        elif isinstance(self, Camera):
-            platform = "camera"
-        else:
-            platform = "unknown"
-            
-        return f"{platform}.nebula_pad_{host_part}_{name_part}"
+    def should_poll(self) -> bool:
+        """No polling needed."""
+        return False
 
 class NebulaPadBaseSensor(NebulaPadBaseMixin, SensorEntity):
     """Base class for Nebula Pad sensors."""

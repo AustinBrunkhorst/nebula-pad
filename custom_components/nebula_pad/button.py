@@ -35,8 +35,8 @@ class AutoHomeXYButton(NebulaPadBaseButton):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the button entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_autohome_xy"
-        self._attr_name = "Nebula Pad Auto-Home XY"
+        self._attr_unique_id = f"{coordinator._host}_autohome_xy"
+        self._attr_name = "Auto-Home XY"
 
     async def async_press(self) -> None:
         """Handle the button press."""
@@ -54,8 +54,8 @@ class AutoHomeZButton(NebulaPadBaseButton):
     def __init__(self, coordinator: NebulaPadCoordinator) -> None:
         """Initialize the button entity."""
         super().__init__(coordinator)
-        self._attr_unique_id = f"nebula_pad_{coordinator._host}_autohome_z"
-        self._attr_name = "Nebula Pad Auto-Home Z"
+        self._attr_unique_id = f"{coordinator._host}_autohome_z"
+        self._attr_name = "Auto-Home Z"
 
     async def async_press(self) -> None:
         """Handle the button press."""
