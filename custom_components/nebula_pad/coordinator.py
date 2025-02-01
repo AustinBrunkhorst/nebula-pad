@@ -8,6 +8,7 @@ from typing import Any, Callable
 from contextlib import suppress
 
 import aiohttp
+import json
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
