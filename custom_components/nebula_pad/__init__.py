@@ -35,8 +35,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "entry": entry.data,
     }
 
-    # Start the coordinator
-    await coordinator.start()
+    # Initialize coordinator and wait for device info
+    await coordinator.setup()
 
     # Forward the setup to all platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

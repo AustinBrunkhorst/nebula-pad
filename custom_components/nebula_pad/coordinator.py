@@ -2,14 +2,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Callable
 from contextlib import suppress
 
 import aiohttp
-import json
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
@@ -42,67 +42,22 @@ class NebulaPadCoordinator:
         self._connect_lock = asyncio.Lock()
         self._message_handlers: list[Callable[[dict], None]] = []
         self._device_info = None
-        self._device_info_received = asyncio.Event()
+        self._setup_complete = asyncio.Event()
 
     @property
     def device_info(self) -> dict:
         """Return device info."""
         return self._device_info
 
-    async def wait_for_device_info(self) -> None:
-        """Wait for device info to be received."""
-        await self._device_info_received.wait()
+    @property
+    def is_initialized(self) -> bool:
+        """Return True if device info is available."""
+        return self._device_info is not None
 
-    def add_message_handler(self, handler: Callable[[dict], None]) -> None:
-        """Add a message handler."""
-        self._message_handlers.append(handler)
-
-    def remove_message_handler(self, handler: Callable[[dict], None]) -> None:
-        """Remove a message handler."""
-        with suppress(ValueError):
-            self._message_handlers.remove(handler)
-
-    async def send_message(self, message: dict) -> None:
-        """Send a message through the WebSocket connection."""
-        if self._ws is None:
-            _LOGGER.error("Cannot send message - no WebSocket connection")
-            return
-
-        try:
-            await self._ws.send_json(message)
-        except Exception as err:  # pylint: disable=broad-except
-            _LOGGER.error("Failed to send message: %s", err)
-
-    async def start(self) -> None:
-        """Start the WebSocket coordinator."""
-        self._shutdown = False
-        self._session = aiohttp.ClientSession()
-        self._connection_task = asyncio.create_task(self._maintain_connection())
-        _LOGGER.info("WebSocket coordinator started for %s:%s", self._host, self._port)
-
-    async def stop(self) -> None:
-        """Stop the WebSocket coordinator."""
-        self._shutdown = True
-        
-        if self._connection_task:
-            self._connection_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._connection_task
-        
-        if self._heartbeat_task:
-            self._heartbeat_task.cancel()
-            with suppress(asyncio.CancelledError):
-                await self._heartbeat_task
-        
-        if self._ws:
-            await self._ws.close()
-            self._ws = None
-            
-        if self._session:
-            await self._session.close()
-            self._session = None
-        
-        _LOGGER.info("WebSocket coordinator stopped for %s:%s", self._host, self._port)
+    async def setup(self) -> None:
+        """Set up the coordinator and wait for device info."""
+        await self.start()
+        await self._setup_complete.wait()
 
     def _handle_device_info(self, data: dict) -> None:
         """Handle device info message and register device."""
@@ -117,7 +72,7 @@ class NebulaPadCoordinator:
                 **self._device_info,
             )
             
-            self._device_info_received.set()
+            self._setup_complete.set()
             _LOGGER.info("Device info received: %s", self._device_info)
 
     async def _maintain_connection(self) -> None:
